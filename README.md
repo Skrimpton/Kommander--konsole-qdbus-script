@@ -1,4 +1,4 @@
-# Wrapper script for qdbus-commands in Konsole terminal emulator
+# Wrapper script for qdbus-commands in Konsole terminal emulator with wmctrl as optional dependency
 
 ## Usage examples
 
@@ -28,7 +28,7 @@
 
 <br>
 
-### kommander size VERTICAL POS HORIZONTAL POS HEIGHT WIDTH (org.kde.konsole-PID)
+### kommander size VERTICAL-POSITON HORIZONTAL-POSITION HEIGHT WIDTH (org.kde.konsole-PID)
   Place on screen and resize current/given window using wmctrl
 
 <br>
