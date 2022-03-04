@@ -1,26 +1,26 @@
 # Kommander--konsole-qdbus-script
-### Konsole (KDE terminal) wrapper script for qdbus commands.
+#### Konsole (KDE terminal) wrapper script for qdbus commands.
 
-THIS IS A WORK IN PROGRESS, MADE BY AN IDIOT (ME)
-
-
-Usage examples
+#### THIS IS A WORK IN PROGRESS, MADE BY AN IDIOT (ME)
 
 
+## Usage examples
 
-kommander
+
+
+### kommander
 
   Without arguments kommander displays a list of currently open konsole-windows and -sessions
 
 
 
-kommander 1 ls
+### kommander 1 ls
 
   session 1 in the current window will execute <ls>-command
 
 
 
-kommander 1 ls org.kde.konsole-<PID>
+### kommander 1 ls org.kde.konsole-<PID>
 
   Execute <ls>-command in session 1 of the window refrenced
 
@@ -28,19 +28,18 @@ kommander 1 ls org.kde.konsole-<PID>
 
 
 
-kommander + | kommander split | kommander 1 ls | kommander 2 htop
+### kommander + | kommander split | kommander 1 ls | kommander 2 htop
 
   Open new konsole window, split it's view into 2 sessions vertically, execute <ls> in left split-view and <htop> in right.
 
 
-
-kommander size <HEIGHT> <WIDTH> (org.kde.konsole-<PID>)
+### kommander size <HEIGHT> <WIDTH> (org.kde.konsole-<PID>)
 
   Resize current/given window using wmctrl
 
 
 
-kommander size <VERTICAL POS> <HORIZONTAL POS> <HEIGHT> <WIDTH> (org.kde.konsole-<PID>)
+### kommander size <VERTICAL POS> <HORIZONTAL POS> <HEIGHT> <WIDTH> (org.kde.konsole-<PID>)
 
   Place on screen and resize current/given window using wmctrl
 
