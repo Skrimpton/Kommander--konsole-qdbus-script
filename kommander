@@ -1,0 +1,867 @@
+#!/bin/zsh
+
+
+
+## Sessions in order of: created
+##                       creator
+
+# qdbus org.kde.konsole-$the_pid /Windows/1 sessionList
+
+## Only top 2 results are reliably accurate - same session creates 2 children, and gets moved to spot 2 for each creation
+
+
+# # # # # # # # #  Functions
+
+mysplitcommand ()
+{
+    echo -e "This session does not exist"
+    echo -e "Create new session? - press enter on empty line to skip"
+    echo -e "As vertical split = l|v|vertical|+ "
+    echo -e "As horizontal split = h|horizontal|- "
+    read -t 5 theans
+    case $theans in
+    l|v|vertical|+)
+        ( qdbus "$konsole_id" /konsole/MainWindow_1 org.kde.KMainWindow.activateAction split-view-left-right ) &> /dev/null
+
+    ;;
+    h|horizontal|-)
+        ( qdbus "$konsole_id" /konsole/MainWindow_1 org.kde.KMainWindow.activateAction split-view-top-bottom ) &> /dev/null
+
+    ;;
+    esac
+}
+
+# # # # # # # # #  Functions end
+
+
+
+
+
+lastarg="${@: -1}"
+firstarg="$1"
+
+# Test for stdin and set temporarily set all of it to $konsole_stdinId
+if test ! -t 0; then
+    while read line
+    do
+        konsole_stdinId="${line}"
+    done < /dev/stdin
+fi
+
+## Current pid of window
+    the_pid="$(xprop -id $(xprop -root | awk '/_NET_ACTIVE_WINDOW\(WINDOW\)/{print $NF}') | awk '/_NET_WM_PID\(CARDINAL\)/{print $NF}')"
+
+## Use org.kde.konsole.-PID-number as refrence for qdubus
+    konsole_id="org.kde.konsole-$the_pid"
+    konsole_id_original="org.kde.konsole-$the_pid"
+
+## Check if pid belongs to konsole
+    [[ `ps -p "$the_pid" -o comm=` != "konsole" ]] && echo "not in konsole" && return
+
+    konsole_list_of_sessions=$(qdbus "$konsole_id" | grep "/Sessions/[0-9]*")
+    konsole_list_of_windows="$(qdbus | grep "konsole" | sed 's/\ //g')"
+
+## Regex-check if last argument matches qdbus refrence scheme
+    if [[ $lastarg =~ "org.kde.konsole-[0-9]" ]]
+    then
+        echo $konsole_list_of_windows | while read -r list_of_windows_line
+            do
+            [[ $lastarg = $list_of_windows_line ]] && konsole_id="$list_of_windows_line"
+            done
+        i=0
+    while [ $((i+=1)) -lt $# ]; do
+        set -- "$@" "$1"
+        shift
+    done # 1 2 3 -> 3 1 2
+#     printf '%s' "$1" # last argument
+    shift # $@ is now without last argument
+    echo
+
+
+    elif [[ $1 =~ "org.kde.konsole-[0-9]" ]]
+    then
+#     echo pip
+        echo $konsole_list_of_windows | while read -r list_of_windows_line
+            do
+            [[ $1 = $list_of_windows_line ]] && konsole_id="$list_of_windows_line" && shift
+            done
+
+
+# Regex-check if last stdin matches qdbus refrence scheme
+    elif [[ "$konsole_stdinId" =~ "org.kde.konsole-*" ]]
+    then
+        sleep 1
+    konsole_id="$konsole_stdinId"
+    fi
+
+    konsole_id_pid="$(echo $konsole_id  | grep -v -e "current" -e "All" | cut -d'-' -f '2')"
+    konsole_current_session=$(qdbus "$konsole_id" /Windows/1 org.kde.konsole.Window.currentSession)
+    konsole_list_of_sessions=$(qdbus "$konsole_id" | grep "/Sessions/[0-9]*")
+
+    [[ -z $@ ]] && (
+        echo "Selected window:        $konsole_id"
+        echo "Active window-session:  $konsole_current_session"
+        echo "—————————————————————————————————————————"
+        echo -e `tput smul`"Sessions list (ID):            Total: $(echo "$konsole_list_of_sessions" | wc -l)  `tput rmul`"
+        echo "$konsole_list_of_sessions" | while read -r thelistline
+                                            do
+                                                [[ ${thelistline##*/} = "$konsole_current_session" ]] && echo " ${thelistline##*/} *"
+                                                [[ ${thelistline##*/} != "$konsole_current_session" ]] && echo " ${thelistline##*/}"
+                                            done
+        echo "—————————————————————————————————————————"
+        echo -e "`tput smul`Windows list (key-pid):        Total: $(echo "$konsole_list_of_windows" | wc -l)  `tput rmul`"
+        echo "$konsole_list_of_windows"| while read -r thelistline
+                                            do
+                                                [[ $thelistline = "org.kde.konsole-$the_pid" ]] && echo " $thelistline *"
+                                                [[ $thelistline != "$konsole_id_original" ]] && echo " $thelistline"
+                                            done
+        echo "—————————————————————————————————————————"
+    )
+
+
+# # # #  CHECK IF ALL ARGUMENTS MATCH FOLLOWING  # # # #
+case $@ in
+
+    profile)
+
+        echo "`tput setaf 120`Select profile`tput sgr0`"
+        mycounter=1
+        declare -A myarray
+        qdbus "$konsole_id" /Windows/1 org.kde.konsole.Window.profileList | while IFS= read -r line
+                                                                                                do
+                                                                                                    myarray+=(["$mycounter"]="$line")
+                                                                                                    echo "$mycounter) $line"
+                                                                                                    ((mycounter++))
+                                                                                                done
+        read -t 10 myans
+        for answer in "${(@k)myarray}"
+        do
+            [[ $answer = $myans ]] && qdbus "$konsole_id" /Sessions/$konsole_current_session org.kde.konsole.Session.setProfile $myarray[$myans]
+        done || for answer in ${myarray[@]}
+        do
+            [[ $answer = $myans ]] && qdbus "$konsole_id" /Sessions/$konsole_current_session org.kde.konsole.Session.setProfile $answer
+        done
+
+       [[ $myans = "q" || $myans = "" ]] && echo "`tput setaf 120`Skipped setting profile`tput sgr0`"
+    ;;
+
+    a|activate|active)
+        wmctrl -ia `wmctrl -lp | grep $konsole_id_pid | cut -d' ' -f'1'`
+    ;;
+    l|split|splitv)
+        qdbus "$konsole_id" /konsole/MainWindow_1 org.kde.KMainWindow.activateAction split-view-left-right &> /dev/null
+    ;;
+
+    h|splith)
+
+        qdbus "$konsole_id" /konsole/MainWindow_1 org.kde.KMainWindow.activateAction split-view-top-bottom &> /dev/null
+    ;;
+
+    # #     Clears all sessions except current
+    clear)
+
+        echo "$konsole_list_of_sessions" | while read -r session
+            do [[ $konsole_current_session != ${session##*/} ]] && qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "clear"
+            done
+    ;;
+
+    # #     Same as passing "all kill" - sends SIGTERM all running (foreground) processes in all sessions
+    kill)
+
+        echo "$konsole_list_of_sessions" | while read -r session
+            do kill -SIGINT `qdbus "$konsole_id" $session foregroundProcessId`
+            done
+    ;;
+
+    # #     Same as passing "all id" - prints ID number in all sessions and gives list + help-text
+    id)
+
+
+            [[ "$konsole_id_original" != $konsole_id ]] && (
+                echo "Active window:    $konsole_id_original"
+                echo "Selected window:  $konsole_id"
+                echo "——————————————————————————————————————"
+                echo "Total nr. of sessions: `echo "${konsole_list_of_sessions}" | wc -l` "
+            )
+            [[ "$konsole_id_original" = $konsole_id ]] && (
+
+                echo "Selected window: $konsole_id"
+                echo "——————————————————————————————————————"
+                echo "Total nr. of sessions: `echo "${konsole_list_of_sessions}" | wc -l` - Window: $konsole_id"
+
+            )
+            echo "--------------------------------------"
+            echo "Currently selected session: $konsole_current_session"
+            echo
+
+            if [[ $konsole_id_original = $konsole_id ]]
+            then
+            echo $konsole_list_of_sessions | while read -r session
+                do
+                    if [[ $konsole_current_session != ${session##*/} ]]
+                    then
+                        foregroundProcessName="$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)"
+
+                        echo "$foregroundProcessName is running in session nr. ${session##*/}"
+                        [[ $foregroundProcessName = "zsh" ]] && qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "echo \"this is session nr. ${session##*/}\""
+                    fi
+                done
+            fi
+
+            if [[ "$konsole_id_original" != $konsole_id ]]
+            then
+
+            echo $konsole_list_of_sessions | while read -r session
+                do
+                    foregroundProcessName="$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)"
+
+                    echo "$foregroundProcessName is running in session nr. ${session##*/}"
+                    [[ $foregroundProcessName = "zsh" ]] && qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "echo \"this is session nr. ${session##*/}\""
+                done
+            fi
+
+            echo
+            echo -e "List of session numbers:"
+            echo -e "(use session number as ID before command)"
+            echo "${konsole_list_of_sessions}"  | while read -r session; do echo "${session##*/}"; done
+    ;;
+    w|win|window)
+    echo $konsole_id
+    ;;
+    »)
+    qdbus $konsole_id /konsole/MainWindow_1 org.kde.KMainWindow.activateAction expand-active-view &> /dev/null
+    ;;
+    «)
+    qdbus $konsole_id /konsole/MainWindow_1 org.kde.KMainWindow.activateAction shrink-active-view &> /dev/null
+    ;;
+    help|-help|--help)
+        echo -e "`tput smul``tput setaf 220`Usage examples`tput sgr0`
+
+`tput setaf 255`kommander`tput sgr0`
+  Without arguments kommander displays a list of currently open konsole-windows and -sessions
+
+`tput setaf 255`kommander 1 ls`tput sgr0`
+  session 1 in the current window will execute <ls>-command
+
+`tput setaf 255`kommander 1 ls org.kde.konsole-<PID>`tput sgr0`
+  Execute <ls>-command in session 1 of the window refrenced
+  (org.kde.konsole-<PID> can also be the first argument)
+
+`tput setaf 255`kommander + | kommander split | kommander 1 ls | kommander 2 htop`tput sgr0`
+  Open new konsole window, split it's view into 2 sessions vertically, execute <ls> in left split-view and <htop> in right.
+
+`tput setaf 255`kommander size <HEIGHT> <WIDTH> (org.kde.konsole-<PID>)`tput sgr0`
+  Resize current/given window using wmctrl
+
+`tput setaf 255`kommander size <VERTICAL POS> <HORIZONTAL POS> <HEIGHT> <WIDTH> (org.kde.konsole-<PID>)`tput sgr0`
+  Place on screen and resize current/given window using wmctrl
+
+`tput setaf 255`kommander id (org.kde.konsole-<PID>)`tput sgr0`
+  List and identify the current sessions in the current/given window by executing <echo "this is session X"> in the session
+
+`tput setaf 255`kommander id list (org.kde.konsole-<PID>)`tput sgr0`
+  List the current sessions in current/given window
+
+`tput setaf 255`kommander window`tput sgr0`
+  Returns the current window's qdbus refrence
+
+`tput setaf 255`kommander <session> kill`tput sgr0`
+  Perform kill -SIGINT (same as pressing ctrl+c) on the current process running in the given session
+
+`tput setaf 255`kommander kill all`tput sgr0`
+  Perform kill -SIGINT on all running processes in all other sessions, in the current window
+
+`tput setaf 255`kommander kill all windows`tput sgr0`
+  Perform kill -SIGINT on all running processes in all other sessions, in all windows
+
+`tput setaf 255`kommander clear all`tput sgr0`
+  Sends clear command to all other sessions in current window, if ps -p says \"zsh\" is the currently running process
+
+`tput setaf 255`kommander clear all windows`tput sgr0`
+  Sends clear command to all other sessions in all windows,  if ps -p says \"zsh\" is the currently running process
+
+`tput setaf 255`kommander profile (org.kde.konsole-<PID>)`tput sgr0`
+  Select a profile for the current session from the list of available konsole profiles
+
+`tput setaf 255`kommander profile list (org.kde.konsole-<PID>)`tput sgr0`
+
+
+"
+
+    ;;
+
+esac
+
+
+# # # #  CHECK IF $1 IS A COMMAND  # # # #
+case $1 in
+
+    # #     List current windows
+    listw)
+        echo -e "$konsole_list_of_windows" | while read -r window_line
+            do
+            [[ $window_line != "$konsole_id_original" ]] && echo "${window_line}" || echo "${window_line} *"
+            done
+
+    ;;
+
+    lists)
+        [[ $@ = "lists" ]] && (
+        echo -e "$konsole_list_of_sessions" | while read -r sessions_line
+            do
+            [[ ${sessions_line##*/} != "$konsole_current_session" ]] && echo "${sessions_line##*/}" || echo "${sessions_line##*/} *"
+            done
+        )
+        case $2 in
+        f)
+        echo -e "$konsole_list_of_sessions" | while read -r sessions_line
+            do
+            [[ ${sessions_line##*/} != "$konsole_current_session" ]] && echo "${sessions_line}" || echo "${sessions_line} *"
+            done
+         ;;
+        esac
+    ;;
+
+    listp)
+
+        echo $konsole_list_of_sessions | while read -r session
+            do
+                foregroundProcessName="$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)"
+
+                [[ ${session##*/} != "$konsole_current_session" ]] && echo "Session ${session##*/}  :  $foregroundProcessName"
+
+                [[ ${session##*/} = "$konsole_current_session" ]] && echo "Session ${session##*/}* :  $foregroundProcessName"
+
+            done
+    ;;
+
+    new|+)
+        [[ -z $2 ]] && (&>/dev/null konsole &;echo "org.kde.konsole-$!")
+
+    ;;
+    -s)
+        while [[ $# -gt 0 ]]
+        do
+            [[ $2 =~ ^[0-9]+$ ]] && [[ $3 =~ [a-z] ]] && qdbus "$konsole_id" /Sessions/$2 org.kde.konsole.Session.runCommand "$3"
+            shift
+        done
+    ;;
+    close|x)
+        [[ -z $2 ]] && [[ $konsole_id = $konsole_id_original ]] && (
+        oldifs="$IFS"
+        IFS=
+        echo
+        echo "Close this window?"
+"y | yes | +"
+"(or)"
+"n | no | - | <enter on empty line>"
+        echo
+        echo "Press enter to answer, 5s timeout."
+        read -t 5 -r ans
+        case $ans in
+            +|y|yes)
+                qdbus "$konsole_id" /konsole/MainWindow_1 org.qtproject.Qt.QWidget.close
+            ;;
+        esac
+        IFS="$oldifs"
+        )
+
+        case $2 in
+        other|o|0|all|a)
+            echo "$konsole_list_of_windows" | while read -r window_in_list
+            do
+                [[ "$konsole_id" != $window_in_list ]] && (&>/dev/null qdbus "$window_in_list" /konsole/MainWindow_1 org.qtproject.Qt.QWidget.close)
+            done
+        ;;
+        esac
+    ;;
+    # #     Center window using wmctrl
+    center)
+
+        [[ -z $(which wmctrl) ]] && echo "wmctrl not found in path" && return
+
+        ## Current pid of window
+        old_pid="$the_pid"
+        the_pid="$konsole_id_pid"
+
+
+        ## Check if pid belongs to konsole
+        [[ `ps -p "$the_pid" -o comm=` != "konsole" ]] && echo "not in konsole" && return
+        ## Screen width (px)
+        x_screen_width=$(xdpyinfo | awk '/dimensions/ {print $2}' | cut -d 'x' -f'1')
+        ## Screen height (px)
+        x_screen_height=$(xdpyinfo | awk '/dimensions/ {print $2}' | cut -d 'x' -f'2')
+        ## Window width
+        konsoleWindowWidth=$(qdbus $konsole_id /konsole/MainWindow_1 org.qtproject.Qt.QWidget.width)
+        ## Window height
+        konsoleWindowHeight=$(qdbus $konsole_id /konsole/MainWindow_1 org.qtproject.Qt.QWidget.height)
+
+        ## Resize (and position) current window
+        ## Command explained: wmctrl -r windowname -e  gravity,position vertical, p. horizontal, window width, w. height
+        echo -e "wmctrl -ir `wmctrl -lp | grep $the_pid | cut -d' ' -f'1'` -e 0,$(($x_screen_width/2-$konsoleWindowWidth/2)),$(($x_screen_height/2-$konsoleWindowHeight/2)),$konsoleWindowWidth,$konsoleWindowHeight
+        "
+        wmctrl -ir `wmctrl -lp | grep $the_pid | cut -d' ' -f'1'` -e 0,$(($x_screen_width/2-$konsoleWindowWidth/2)),$(($x_screen_height/2-$konsoleWindowHeight/2)),$konsoleWindowWidth,$konsoleWindowHeight
+    ;;
+
+    # #     Resize window using wmctrl
+    s|size|-size)
+        ## See if wmctrl is installed in path(s)
+        [[ -z $(which wmctrl) ]] && echo "\"wmctrl\" not found using <which>" && return
+
+        ## Screen width (px)
+        x_screen_width=$(xdpyinfo | awk '/dimensions/ {print $2}' | cut -d 'x' -f'1')
+
+        ## Screen height (px)
+        x_screen_height=$(xdpyinfo | awk '/dimensions/ {print $2}' | cut -d 'x' -f'2')
+
+        if [[ -z $4 && -z $5 ]]
+        then
+            [[ $2 != "" ]] && userWindowHeight=$2
+            if [[ $2 = "" ]]
+            then
+                echo -e "Height (max: $x_screen_height)"
+                read userWindowHeight
+                    if [[ $userWindowHeight -le $x_screen_height ]]
+                    then
+                        echo -e "\nSetting height to: $userWindowHeight"
+                    fi
+            fi
+
+            if [[ $userWindowHeight -gt $x_screen_height ]]
+            then
+                echo "Height is too big - max: $x_screen_height"
+                exit
+            fi
+
+            [[ $3 != "" ]] && userWindowWidth=$3
+            if [[ $3 = "" ]]
+            then
+            echo -e "Width (max: $x_screen_width)"
+            read userWindowWidth
+
+                if [[ $userWindowWidth -le $x_screen_width ]]
+                then
+                    echo -e "\nSetting width to: $userWindowWidth"
+                    echo
+
+                fi
+            fi
+
+            if [[ $userWindowWidth -gt $x_screen_width ]]
+                then
+                    echo "Width is too big - max: $x_screen_width"
+                    exit
+            fi
+            konsoleVerticalScreenPostion=$(qdbus $konsole_id /konsole/MainWindow_1 org.qtproject.Qt.QWidget.y)
+            konsoleHorizontalScreenPostion=$(qdbus $konsole_id /konsole/MainWindow_1 org.qtproject.Qt.QWidget.x)
+        ( wmctrl -ir `wmctrl -lp | grep $konsole_id_pid | cut -d' ' -f'1'` -e 0,$konsoleHorizontalScreenPostion,$konsoleVerticalScreenPostion,$userWindowWidth,$userWindowHeight )
+        fi
+
+
+
+
+        if ! [[ -z $4 && -z $5 ]]
+        then
+            [[ $4 != "" ]] && userWindowHeight=$4
+
+
+
+            if [[ $userWindowHeight -gt $x_screen_height ]]
+            then
+                echo "Height is too big - max: $x_screen_height"
+                echo -e "Height (max: $x_screen_height)"
+                read userWindowHeight
+                    if [[ $userWindowHeight -le $x_screen_height ]]
+                    then
+                        echo -e "\nSetting height to: $userWindowHeight"
+                    else
+                        echo "Bad value"
+                        exit
+                    fi
+            fi
+
+            [[ $5 != "" ]] && userWindowWidth=$5
+
+            if [[ $userWindowWidth -gt $x_screen_width ]]
+            then
+                echo "Width is too big - max: $x_screen_width"
+                echo -e "Width (max: $x_screen_width)"
+                read userWindowWidth
+                    if [[ $userWindowWidth -le $x_screen_width ]]
+                    then
+                        echo -e "\nSetting width to: $userWindowWidth"
+                    else
+                        echo "Bad value"
+                        exit
+                    fi
+            fi
+
+            [[ $2 =~ ^[0-9]+$ ]] && konsoleVerticalScreenPostion=$2
+
+            if [[ $konsoleVerticalScreenPostion -gt $x_screen_height ]]
+            then
+                echo "Placement is outside window"
+                echo -e "Max value: $x_screen_height)"
+                read konsoleVerticalScreenPostion
+                    if [[ $konsoleVerticalScreenPostion -le $x_screen_height ]]
+                    then
+                        echo -e "New Y-postion value: $konsoleVerticalScreenPostion"
+                    else
+                        echo "Bad value"
+                        exit
+                    fi
+            fi
+
+            [[ $3 =~ ^[0-9]+$ ]] && konsoleHorizontalScreenPostion=$3
+            if [[ $konsoleHorizontalScreenPostion -gt $x_screen_width ]]
+            then
+                echo "Placement is outside window"
+                echo -e "Max value: $x_screen_width)"
+                read konsoleHorizontalScreenPostion
+                    if [[ $konsoleHorizontalScreenPostion -le $x_screen_width ]]
+                    then
+                        echo -e "New Y-postion value: $konsoleHorizontalScreenPostion"
+                    else
+                        echo "Bad value"
+                        exit
+                    fi
+            fi
+
+            if [[ $userWindowWidth -gt $x_screen_width ]] || [[ $userWindowHeight -gt $x_screen_height ]] || [[ ! $userWindowHeight =~ ^[0-9]+$ ]] || [[ ! $userWindowWidth =~ ^[0-9]+$ ]] || [[ $konsoleHorizontalScreenPostion -gt $x_screen_height  || $konsoleVerticalScreenPostion -gt $x_screen_width ]]
+                then
+                    echo "bad value(s)"
+                    exit
+            fi
+        ( wmctrl -ir `wmctrl -lp | grep $konsole_id_pid | cut -d' ' -f'1'` -e 0,$konsoleHorizontalScreenPostion,$konsoleVerticalScreenPostion,$userWindowWidth,$userWindowHeight )
+        fi
+    ;;
+
+
+    # #     Split-command with arguments
+    split)
+        case $2 in
+
+        l|v|vertical|+)
+#         echo $konsole_stdinId
+            ( qdbus "$konsole_id" /konsole/MainWindow_1 org.kde.KMainWindow.activateAction split-view-left-right ) &> /dev/null
+        ;;
+
+        h|horizontal|-)
+            ( qdbus "$konsole_id" /konsole/MainWindow_1 org.kde.KMainWindow.activateAction split-view-top-bottom ) &> /dev/null
+        ;;
+
+        esac
+    ;;
+
+    k|-k|--k|kill|-kill|--kill)
+        if [[ $2 = "all" ]] || [[ $2 = "a" ]]
+        then
+            [[ -z $3 ]] && echo "$konsole_list_of_sessions" | while read -r session
+                do
+                    kill -SIGINT $(qdbus "$konsole_id" $session foregroundProcessId)
+                done
+            case $3 in
+            w|win|windows|window|other)
+                original_session=$konsole_current_session
+                echo "$konsole_list_of_windows" | while read -r window_in_list
+                do
+                window_list_of_sessions=$(qdbus "$window_in_list" | grep "/Sessions/[0-9]*")
+                echo "$window_list_of_sessions" | while read -r session
+                                                    do
+                                                        [[ $konsole_id_original != $window_in_list && $original_session != ${session##/} ]] && kill -SIGINT `qdbus "$window_in_list" $session foregroundProcessId`
+
+                                                        [[ $konsole_id_original = $window_in_list && $original_session != ${session##/} ]] && kill -SIGINT `qdbus "$window_in_list" $session foregroundProcessId`
+                                                    done
+                done
+            ;;
+            esac
+        fi
+    ;;
+
+    clear|c)
+        ## Same as passing "all clear" - clears all sessions *including* current
+        case $2 in
+            a|all)
+            echo "$konsole_list_of_sessions" | while read -r session
+                                                                    do
+                                                                        qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "clear"
+                                                                    done
+            case $3 in
+                w|win|windows)
+                echo "$konsole_list_of_windows" | while read -r window_in_list
+                do
+                    if [[ $konsole_id != $window_in_list ]]
+                    then
+                        window_list_of_sessions=$(qdbus "$window_in_list" | grep "/Sessions/[0-9]*")
+                        echo "$window_list_of_sessions" | while read -r session
+                                                            do
+                                                                [[ "$(ps -p "$(qdbus "$window_in_list" $session foregroundProcessId)" -o comm=)" = "zsh" ]] && qdbus "$window_in_list" $session org.kde.konsole.Session.runCommand "clear"
+                                                            done
+
+                    fi
+                done
+                ;;
+            esac
+            ;;
+        esac
+    ;;
+
+    id)
+        ## Only print info in current session
+        case $2 in
+            l|list|-list)
+                echo
+                echo "`tput smul && tput setaf 220`$konsole_id`tput rmul` ← current window`tput sgr0`"
+                echo "Total nr. of sessions: $(echo "${konsole_list_of_sessions}" | wc -l)"
+                echo
+                echo $konsole_list_of_sessions | while read -r session
+                                                    do
+                                                        echo "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=) is running in ${session##*/}"
+                                                    done
+
+                echo
+                echo -e "List of session numbers:"
+                echo -e "(use session number as ID before command)"
+                echo "${konsole_list_of_sessions}"  | while read -r session; do echo "${session##*/}"; done
+
+                echo $konsole_list_of_windows | while read -r mywindow
+                do
+                    if [[ $konsole_id_original != $mywindow ]]
+                    then
+                    konsole_id="$mywindow"
+                    konsole_list_of_sessions=$(qdbus "$konsole_id" | grep "/Sessions/[0-9]*")
+                    echo
+                    echo "`tput smul && tput setaf 220`$konsole_id`tput sgr0`"
+                    echo "Total nr. of sessions: $(echo "${konsole_list_of_sessions}" | wc -l)"
+                    echo
+                    echo $konsole_list_of_sessions | while read -r session
+                                                        do
+                                                            echo "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=) is running in ${session##*/}"
+                                                        done
+
+
+                    echo
+                    echo -e "List of session numbers:"
+                    echo -e "(use session number as ID before command)"
+                    echo "${konsole_list_of_sessions}"  | while read -r session; do echo "${session##*/}"; done
+                    fi
+                done
+
+            ;;
+        esac
+        ## Same as passing only "id" - prints ID number in all sessions and gives list + help-text
+#         [[ $2 = "all" ]] && (
+#
+#
+#         )
+
+        case $2 in
+            a|all)
+                case $3 in
+                w|-w|--w|win|-win|--win|windows|-windows|--windows)
+                    mycounter=0
+                    echo "Current window:"
+                    echo "`tput setaf 220``tput smul`$konsole_id`tput sgr0`"
+                    echo
+                    echo "This is session nr: $konsole_current_session"
+                    echo "Total nr. of sessions: `echo "${konsole_list_of_sessions}" | wc -l` "
+                    echo
+                    echo -e "List of session numbers:"
+                    echo -e "(use session number as ID before command)"
+                    echo "${konsole_list_of_sessions}"  | while read -r session; do echo "${session##*/}"; done && echo
+                    echo "${konsole_list_of_sessions}"  | while read -r session; do [[ $konsole_id_original = $konsole_id ]] && echo "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=) is running in ${session##*/}"; done && echo
+                    echo "${konsole_list_of_windows}" | while read -r mywindow
+                                                        do
+                                                            konsole_id="$mywindow"
+                                                            if [[ $konsole_id_original != $konsole_id ]]
+                                                            then
+                                                                echo -e "\n`tput setaf 220``tput smul`$konsole_id`tput sgr0`" && echo "list of sessions in window:" && echo "${konsole_list_of_sessions}"  | while read -r session; do echo "${session##*/}"; done && echo
+                                                            fi
+
+
+                                                            konsole_list_of_sessions=$(qdbus "$konsole_id" | grep "/Sessions/[0-9]*")
+
+                                                            echo $konsole_list_of_sessions | while read -r session
+                                                            do [[ $konsole_id_original != $konsole_id ]] && [[ $original_session != ${session##*/} ]] && [[ "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)" = "zsh" ]] && qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "echo \"this is session nr. ${session##*/}\""
+
+
+                                                            [[ $konsole_id_original != $konsole_id ]] && [[ $original_session != ${session##*/} ]] && [[ "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)" = "zsh" ]] && [[ $mycounter = 0 ]] && qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "echo \"this is window: $mywindow\"" && ((mycounter++))
+
+                                                            [[ $konsole_id_original = $konsole_id ]] && [[ $original_session != ${session##*/} ]] && [[ "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)" = "zsh" ]] && qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "echo \"this is session nr. ${session##*/}\""
+
+                                                            [[ $konsole_id_original != $konsole_id ]] && echo "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=) is running in ${session##*/}"
+
+#                                                             [[ $konsole_id_original != $konsole_id ]] && echo "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=) is running in ${session##*/}"
+
+                                                            if [[ $konsole_id_original != $konsole_id ]]
+                                                            then
+                                                                [[ "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)" = "zsh" ]] || echo -e "\nCan't echo in session ${session##*/} - process named \"$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)\" is running"
+                                                            fi
+
+                                                            if [[ $konsole_id_original = $konsole_id ]]
+                                                            then
+                                                                [[ $original_session != ${session##*/} ]] && (
+                                                                [[ "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)" = "zsh" ]] || echo -e "\nCan't echo in session ${session##*/} - process named \"$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)\" is running"
+                                                                )
+                                                            fi
+
+                                                            done
+                                                        done
+                    echo
+                    echo "The other sessions and windows have echoed their ID's"
+                ;;
+                esac
+
+
+                [[ -z $3 ]] && (
+                echo "This is session nr: $konsole_current_session"
+                echo "Total nr. of sessions: `echo "${konsole_list_of_sessions}" | wc -l` "
+                echo
+                echo -e "List of session numbers:"
+                echo -e "(use session number as ID before command)"
+                echo "${konsole_list_of_sessions}"  | while read -r session; do echo "${session##*/}"; done
+                echo $konsole_list_of_sessions | while read -r session
+                do [[ $konsole_current_session != ${session##*/} ]] && [[ "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)" = "zsh" ]] && qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "echo \"this is session nr. ${session##*/}\""
+                    echo "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=) is running in ${session##*/}"
+                    [[ "org.kde.konsole-$the_pid" != $konsole_id ]] && [[ "$(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=)" = "zsh" ]] && qdbus "$konsole_id" $session org.kde.konsole.Session.runCommand "echo \"this is session nr. ${session##*/}\"" || echo "Can't echo in session ${session##*/} $(ps -p "`qdbus "$konsole_id" $session foregroundProcessId`" -o comm=) is running in ${session##*/}"
+                done
+                echo
+                echo "The other sessions have echoed their numbers"
+                )
+            ;;
+        esac
+    ;;
+
+
+    # #     Focus a split by direction
+    focus|f)
+
+        case $2 in
+            up|u|+|^)
+                qdbus $konsole_id /konsole/MainWindow_1 org.kde.KMainWindow.activateAction focus-view-above &> /dev/null
+            ;;
+            down|d|-|v)
+                qdbus $konsole_id /konsole/MainWindow_1 org.kde.KMainWindow.activateAction focus-view-below &> /dev/null
+            ;;
+            l|left|\<)
+                qdbus $konsole_id /konsole/MainWindow_1 org.kde.KMainWindow.activateAction focus-view-left &> /dev/null
+            ;;
+            right|r|\>)
+                qdbus $konsole_id /konsole/MainWindow_1 org.kde.KMainWindow.activateAction focus-view-right &> /dev/null
+            ;;
+        esac
+
+        [[ $2 =~ ^[0-9]+$ ]] && qdbus $konsole_id /Windows/1 org.kde.konsole.Window.setCurrentSession $2
+
+
+        ;;
+esac
+
+
+
+# # # #  Check if $1 is numerical and if so use number as qdbus session refrence  # # # #
+if [[ $1 =~ ^[0-9]+$ ]]
+then
+    # #     Check if $2 is empty and if so check if session corresponding to $1's value exists
+    [[ -z $2 ]] && (
+
+        echo "$konsole_list_of_sessions" | while read -r session
+                                            do [[ $1 = "${session##*/}" ]] && matchCheck="true" && qdbus $konsole_id /Windows/1 org.kde.konsole.Window.setCurrentSession $1
+
+                                            done
+                                            [[ "$matchCheck" != "true" ]] && mysplitcommand
+    )
+
+    # # See if argument 2 is one of the following key-frases
+    case $2 in
+
+        # #         Send interrupt signal to process running in foreground via pid
+        kill)
+            kill -SIGINT `qdbus "$konsole_id" /Sessions/$1 foregroundProcessId`
+        ;;
+
+        # #         Set focus to specified session via qdbus
+        focus)
+            qdbus $konsole_id /Windows/1 org.kde.konsole.Window.setCurrentSession $1
+        ;;
+
+        # #         Split view vertically via qdbus
+        l|v|vertical|+|split|splith)
+            stored_konsole_current_session="$konsole_current_session"
+            qdbus $konsole_id /Windows/1 org.kde.konsole.Window.setCurrentSession $1
+            ( qdbus "$konsole_id" /konsole/MainWindow_1 org.kde.KMainWindow.activateAction split-view-left-right ) &> /dev/null
+            ( qdbus $konsole_id /Windows/1 org.kde.konsole.Window.setCurrentSession $stored_konsole_current_session ) &> /dev/null
+        ;;
+
+        # #         Split view horizontally via qdbus
+        h|horizontal|-|splitv)
+            stored_konsole_current_session="$konsole_current_session"
+            qdbus $konsole_id /Windows/1 org.kde.konsole.Window.setCurrentSession $1
+            ( qdbus "$konsole_id" /konsole/MainWindow_1 org.kde.KMainWindow.activateAction split-view-top-bottom ) &> /dev/null
+            ( qdbus $konsole_id /Windows/1 org.kde.konsole.Window.setCurrentSession $stored_konsole_current_session ) &> /dev/null
+        ;;
+
+        p|-p|--p|profile|-profile|--profile)
+            if [[ -z $3 ]]
+            then
+                echo "`tput setaf 120`Select profile`tput sgr0`"
+                mycounter=1
+                declare -A myarray
+                qdbus "$konsole_id" /Windows/1 org.kde.konsole.Window.profileList | while IFS= read -r line
+                                                                                        do
+                                                                                            myarray+=(["$mycounter"]="$line")
+                                                                                            echo "$mycounter) $line"
+                                                                                            ((mycounter++))
+                                                                                        done
+                read -t 10 myans
+                for answer in "${(@k)myarray}"
+                do
+                    [[ $answer = $myans ]] && qdbus "$konsole_id" /Sessions/$1 org.kde.konsole.Session.setProfile $myarray[$myans]
+                done || for answer in ${myarray[@]}
+                do
+                    [[ $answer = $myans ]] && qdbus "$konsole_id" /Sessions/$1 org.kde.konsole.Session.setProfile $answer
+                done
+
+            [[ $myans = "q" || $myans = "" ]] && echo "`tput setaf 120`Skipped setting profile`tput sgr0`"
+            fi
+
+            case $3 in
+
+            l|-l|--l|list|-list|--list)
+                qdbus "$konsole_id" /Windows/1 org.kde.konsole.Window.profileList
+            ;;
+
+            d|-d|--d|def|-def|--def|default|-default|--default)
+                qdbus "$konsole_id" /Windows/1 org.kde.konsole.Window.defaultProfile
+                echo "Use this profile?"
+                read -t 5 myans
+                case $myans in
+                y|Y|yes|Yes)
+                    qdbus "$konsole_id" /Sessions/$1 org.kde.konsole.Session.setProfile "$(qdbus "$konsole_id" /Windows/1 org.kde.konsole.Window.defaultProfile)"
+                ;;
+                ""|n|N|no|No)
+                ;;
+                esac
+            ;;
+            sd|s-d|set-def|setdef|sdef|set-default|--set-default)
+                qdbus "$konsole_id" /Sessions/$1 org.kde.konsole.Session.setProfile $(qdbus "$konsole_id" /Windows/1 org.kde.konsole.Window.defaultProfile)
+            ;;
+            esac
+
+            if [[ $3 != "list" ]] && [[ ! -z $3 ]]
+            then
+                qdbus "$konsole_id" /Sessions/$1 org.kde.konsole.Session.setProfile $3
+            fi
+
+        ;;
+
+        *)
+            # #         Check that $2 is not alphabetic and use text value of second field to run command in session ID from first field
+            [[ $2 =~ [a-z] ]] && qdbus "$konsole_id" /Sessions/$1 org.kde.konsole.Session.runCommand "$2"
+        ;;
+
+    esac
+fi
+
+return
+
