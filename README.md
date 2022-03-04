@@ -6,7 +6,7 @@
 (optional depency: WMCTRL)
 
 
-
+<br>
 
 ## Usage examples
 
