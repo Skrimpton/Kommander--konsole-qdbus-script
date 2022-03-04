@@ -36,10 +36,15 @@
 <br>
 
 ### kommander id (org.kde.konsole-PID)
-  List and identify the current sessions in the current/given window by executing echo this is session X in the session
+  List and identify the current sessions in the current/given window by executing "echo this is session X" in the session(s)
 
 <br>
 
+### kommander id all windows
+  List and identify the current sessions in all windows by executing "echo this is session X" in the session(s)
+  
+ <br> 
+  
 ### kommander id list (org.kde.konsole-PID)
   List the current sessions in current/given window
 
