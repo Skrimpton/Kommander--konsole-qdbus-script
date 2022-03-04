@@ -35,7 +35,7 @@
 ### kommander + | kommander split | kommander 1 ls | kommander 2 htop
 
   Open new konsole window, split it's view into 2 sessions vertically, execute <ls> in left split-view and <htop> in right.
-
+<br>
 
 ### kommander size <HEIGHT> <WIDTH> (org.kde.konsole-<PID>)
 
