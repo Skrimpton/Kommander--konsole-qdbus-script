@@ -1,5 +1,8 @@
-# Wrapper script for qdbus-commands in Konsole terminal emulator with wmctrl as optional dependency.<br><br>FAIR WARNING:<br> THIS IS A WORK IN PROGRESS + I AM AN IDIOT AND CANNOT REALLY CODE OR SCRIPT.<br><br>The source code is shameful and hard to look at.
+# Wrapper script for qdbus-commands in Konsole terminal emulator with wmctrl as optional dependency.
 
+## FAIR WARNING
+## THIS IS A HOBBY-PROJECT & WORK IN PROGRESS + I AM AN IDIOT AND CANNOT REALLY CODE OR SCRIPT.<br><br>The source code is shameful and hard to look at.
+#
 ## Usage examples
 
 ### kommander
