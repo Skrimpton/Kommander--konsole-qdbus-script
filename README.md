@@ -64,12 +64,12 @@
 <br>
 
 ### kommander clear all
-  Sends clear command to all other sessions in current window, if ps -p says "zsh" is the currently running process
+  Sends clear command to all other sessions in current window, if ps -p SESSION-PID -o comm= says "zsh" is the currently running process
 
 <br>
 
 ### kommander clear all windows
-  Sends clear command to all other sessions in all windows,  if ps -p says "zsh" is the currently running process
+  Sends clear command to all other sessions in all windows,  if ps -p SESSION-PID -o comm= says "zsh" is the currently running process
 
 <br>
 
