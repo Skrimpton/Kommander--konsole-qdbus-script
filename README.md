@@ -2,7 +2,7 @@
 #
 ## FAIR WARNING:<br><br>This is a hobby-project and work-in-progress<br>Also I am an idiot and can't really code or script<br><br>The source code is shameful and hard to look at.
 #
-## Usage examples
+## Some usage examples
 
 ### kommander
   Without arguments kommander displays a list of currently open konsole-windows and -sessions
