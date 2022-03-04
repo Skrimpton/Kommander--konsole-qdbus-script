@@ -42,11 +42,13 @@
 
   Resize current/given window using wmctrl
 
+  
 <br>
 
 ### kommander size <VERTICAL POS> <HORIZONTAL POS> <HEIGHT> <WIDTH> (org.kde.konsole-<PID>)
 
   Place on screen and resize current/given window using wmctrl
+
 <br>
 
 
